@@ -1,6 +1,23 @@
 const menuToggle = document.querySelector('.menu-toggle');
 const mainNav = document.querySelector('.main-nav');
 
+const photoAssignments = [
+  ['.hero-image img', 'assets/school-space-d.jpg', 'کلاس درس خالی'],
+  ['.story-image img', 'assets/school-space-c.jpg', 'قفسه‌های کتاب در کتابخانه'],
+  ['.gallery-item:nth-child(1) img', 'assets/school-space-d.jpg', 'کلاس درس'],
+  ['.gallery-item:nth-child(2) img', 'assets/school-space-a.jpg', 'راهروی فضای آموزشی'],
+  ['.gallery-item:nth-child(3) img', 'assets/school-space-b.jpg', 'قفسه‌های کتاب'],
+  ['.gallery-item:nth-child(4) img', 'assets/school-space-c.jpg', 'کتابخانه'],
+];
+
+photoAssignments.forEach(([selector, source, description]) => {
+  const image = document.querySelector(selector);
+  if (image) {
+    image.src = source;
+    image.alt = description;
+  }
+});
+
 menuToggle?.addEventListener('click', () => {
   mainNav.classList.toggle('open');
   menuToggle.classList.toggle('open');
