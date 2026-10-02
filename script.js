@@ -2,9 +2,9 @@ const menuToggle = document.querySelector('.menu-toggle');
 const mainNav = document.querySelector('.main-nav');
 
 const photoAssignments = [
-  ['.hero-image img', 'assets/school-space-d.jpg', 'کلاس درس خالی'],
+  ['.hero-image img', 'assets/aks-1.jpeg', 'دانش‌آموزان دختر در حیاط مدرسه'],
   ['.story-image img', 'assets/school-space-c.jpg', 'قفسه‌های کتاب در کتابخانه'],
-  ['.gallery-item:nth-child(1) img', 'assets/school-space-d.jpg', 'کلاس درس'],
+  ['.gallery-item:nth-child(1) img', 'assets/aks-1.jpeg', 'دانش‌آموزان دختر در حیاط مدرسه'],
   ['.gallery-item:nth-child(2) img', 'assets/school-space-a.jpg', 'راهروی فضای آموزشی'],
   ['.gallery-item:nth-child(3) img', 'assets/school-space-b.jpg', 'قفسه‌های کتاب'],
   ['.gallery-item:nth-child(4) img', 'assets/school-space-c.jpg', 'کتابخانه'],
