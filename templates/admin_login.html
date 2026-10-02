@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ورود مدیریت | شاهد فاطمیه</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Estedad:wght@400;500;600;700&family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{font-family:'Vazirmatn',sans-serif;color:#193332;background:#f4f6f1}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px}.login{width:min(100%,420px);background:#fff;border:1px solid #dce5df;padding:34px}.brand{display:flex;align-items:center;gap:12px;margin-bottom:28px}.mark{width:44px;height:44px;display:grid;place-items:center;background:#1e6864;color:white;border-radius:13px 4px;font:700 23px Estedad}.brand strong,.brand small{display:block}.brand strong{font:700 16px Estedad}.brand small{font-size:11px;color:#657774;margin-top:3px}h1{font:700 25px Estedad;margin:0 0 8px}p{font-size:13px;color:#657774;line-height:1.9;margin:0 0 24px}label{display:block;font-size:12px;font-weight:600}input{width:100%;margin-top:8px;padding:13px;border:1px solid #cad8d1;font:14px Vazirmatn;direction:ltr}input:focus{outline:2px solid #8bb8ad;border-color:#1e6864}button{margin-top:18px;width:100%;padding:13px;border:0;background:#1e6864;color:white;font:600 13px Vazirmatn;cursor:pointer}.error{padding:10px 12px;margin:0 0 16px;background:#fae8e0;color:#863c27;font-size:12px}
+  </style>
+</head>
+<body>
+  <main class="login">
+    <div class="brand"><span class="mark">ش</span><span><strong>شاهد فاطمیه</strong><small>مدیریت پیام‌های تماس</small></span></div>
+    <h1>ورود مدیر</h1>
+    <p>برای دیدن پیام‌های ارسال‌شده از سایت، رمز مدیریت را وارد کنید.</p>
+    {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="password">رمز عبور مدیریت</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+      <button type="submit">ورود به پنل</button>
+    </form>
+  </main>
+</body>
+</html>
