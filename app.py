@@ -1,6 +1,7 @@
 from datetime import datetime
 from contextlib import contextmanager
 import hmac
+import json
 import os
 from pathlib import Path
 import secrets
@@ -10,11 +11,13 @@ from flask import Flask, abort, jsonify, redirect, render_template, request, sen
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path(os.getenv("SQLITE_PATH", BASE_DIR / "school.db"))
+CONTACTS_JSON_PATH = Path(os.getenv("CONTACTS_JSON_PATH", BASE_DIR / "contacts.json"))
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 app = Flask(__name__, static_folder=str(BASE_DIR), static_url_path="")
 app.secret_key = os.getenv("SECRET_KEY") or secrets.token_hex(32)
 app.config.update(
+    CONTACTS_JSON_PATH=str(CONTACTS_JSON_PATH),
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.getenv("COOKIE_SECURE", "1" if os.getenv("RENDER") else "0") == "1",
@@ -106,6 +109,26 @@ def create_contact():
     fields = {key: str(payload.get(key, "")).strip() for key in ("name", "phone", "subject", "message")}
     if any(not value for value in fields.values()):
         return jsonify({"ok": False, "message": "لطفاً همه فیلدهای ضروری را کامل کنید."}), 400
+
+    record = {
+        "name": fields["name"],
+        "phone": fields["phone"],
+        "subject": fields["subject"],
+        "message": fields["message"],
+        "created_at": datetime.now().isoformat(),
+    }
+    json_path = Path(app.config["CONTACTS_JSON_PATH"])
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    if json_path.exists():
+        with json_path.open("r", encoding="utf-8") as file:
+            records = json.load(file)
+        if not isinstance(records, list):
+            records = []
+    else:
+        records = []
+    records.append(record)
+    with json_path.open("w", encoding="utf-8") as file:
+        json.dump(records, file, ensure_ascii=False, indent=2)
 
     with get_db() as connection:
         execute(connection,
