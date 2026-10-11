@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>سابقه آزمون‌ها | شاهد فاطمیه</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Estedad:wght@400;500;600;700&family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{--ink:#193332;--teal:#1e6864;--mint:#e7f0ea;--paper:#fffdfa;--line:#dce5df;--coral:#e8a184}*{box-sizing:border-box}body{margin:0;background:#f6f3ee;color:var(--ink);font-family:'Vazirmatn',Tahoma,sans-serif}a{text-decoration:none;color:inherit}.container{width:min(960px,calc(100% - 28px));margin:auto}header{background:var(--ink);color:#fff}.topbar{min-height:72px;display:flex;align-items:center;justify-content:space-between}.brand{display:flex;align-items:center;gap:10px}.mark{width:38px;height:38px;display:grid;place-items:center;background:var(--coral);color:var(--ink);border-radius:12px 4px;font:700 20px Estedad}.brand strong,.brand small{display:block}.brand strong{font:700 15px Estedad}.brand small{color:#a6bdb6;font-size:9px;margin-top:2px}.main{padding:32px 0 70px}.card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:28px}.title{font:700 28px Estedad;margin:0 0 8px}.subtitle{color:#657774;font-size:13px;line-height:2;margin:0 0 24px}.history{display:grid;gap:12px}.item{display:grid;grid-template-columns:1.4fr auto auto;gap:15px;align-items:center;padding:16px;border:1px solid var(--line);border-radius:10px;background:#f9f8f5}.item strong{font-size:13px}.item small{display:block;color:#657774;margin-top:4px}.score{font:700 18px Estedad;color:var(--teal);text-align:left}.link{color:var(--teal);font-weight:700;font-size:12px}.empty{padding:20px;background:#f3f5f2;border-radius:8px;color:#657774}.back{display:inline-block;margin-top:22px;color:var(--teal);font-weight:700}.button{display:inline-block;margin-top:18px;background:var(--teal);color:#fff;padding:11px 16px;border-radius:6px;font-size:12px;font-weight:600}@media(max-width:620px){.item{grid-template-columns:1fr;}.score{text-align:right}}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container topbar">
+      <div class="brand"><span class="mark">ش</span><span><strong>شاهد فاطمیه</strong><small>سابقه آزمون‌ها</small></span></div>
+      <a href="{{ url_for('student_dashboard') }}" style="color:#fff;font-size:11px">داشبورد</a>
+    </div>
+  </header>
+  <main class="main">
+    <div class="container">
+      <div class="card">
+        <h1 class="title">سابقه آزمون‌ها</h1>
+        <p class="subtitle">همه نتایج ثبت‌شده شما در یکجا قابل مشاهده است.</p>
+        {% if attempts %}
+          <div class="history">
+            {% for attempt in attempts %}
+              <article class="item">
+                <div>
+                  <strong>{{ attempt.title }}</strong>
+                  <small>{{ attempt.course_name }} · {{ attempt.submitted_at }}</small>
+                </div>
+                <div class="score">{{ attempt.score }}/{{ attempt.total_score }}</div>
+                <a class="link" href="{{ url_for('student_attempt', attempt_id=attempt.attempt_id) }}">مشاهده نتیجه</a>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="empty">تاکنون آزمونی ثبت نشده است.</p>
+        {% endif %}
+        <a class="back" href="{{ url_for('student_dashboard') }}">← بازگشت به داشبورد</a>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

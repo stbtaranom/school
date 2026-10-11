@@ -61,6 +61,31 @@ class StudentAreaTests(unittest.TestCase):
 
         self.assertTrue(check_password_hash(self.app_module.get_student_password_hash("1001"), "student123"))
 
+    def test_student_can_view_full_exam_history_and_attempt_details(self):
+        login_page = self.client.get("/student/login")
+        csrf_token = login_page.get_data(as_text=True).split('name="csrf_token" value="')[1].split('"')[0]
+        self.client.post("/student/login", data={"student_number": "1001", "password": "student123", "csrf_token": csrf_token}, follow_redirects=True)
+
+        history = self.client.get("/student/history")
+        self.assertEqual(history.status_code, 200)
+        self.assertIn("سابقه آزمون‌ها", history.get_data(as_text=True))
+
+        quiz_page = self.client.get("/student/quiz/1")
+        quiz_token = quiz_page.get_data(as_text=True).split('name="csrf_token" value="')[1].split('"')[0]
+        result = self.client.post(
+            "/student/quiz/1",
+            data={"answer_1": "۶", "answer_2": "۳", "csrf_token": quiz_token},
+            follow_redirects=False,
+        )
+        attempt_id = result.headers.get("Location").split("/")[-1]
+        attempt = self.client.get(f"/student/attempts/{attempt_id}")
+        self.assertEqual(attempt.status_code, 200)
+        self.assertIn("۶", attempt.get_data(as_text=True))
+        self.assertIn("نتیجه آزمون", attempt.get_data(as_text=True))
+
+        other_student = self.client.get(f"/student/attempts/{int(attempt_id) + 100}")
+        self.assertEqual(other_student.status_code, 404)
+
     def test_student_cannot_access_other_student_data(self):
         login_page = self.client.get("/student/login")
         login_token = login_page.get_data(as_text=True).split('name="csrf_token" value="')[1].split('"')[0]

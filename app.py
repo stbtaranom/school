@@ -258,7 +258,7 @@ def student_dashboard():
     with get_db() as connection:
         student = execute(connection, "SELECT id, student_number, name, class_name FROM students WHERE id = ?", (student_id,)).fetchone()
         grades = execute(connection, "SELECT course_name, score, total_score, term FROM student_grades WHERE student_id = ? ORDER BY id DESC", (student_id,)).fetchall()
-        attempts = execute(connection, "SELECT q.title, q.course_name, a.score, a.total_score, a.submitted_at FROM student_quiz_attempts AS a JOIN quizzes AS q ON q.id = a.quiz_id WHERE a.student_id = ? ORDER BY a.id DESC", (student_id,)).fetchall()
+        attempts = execute(connection, "SELECT a.id AS attempt_id, q.title, q.course_name, a.score, a.total_score, a.submitted_at FROM student_quiz_attempts AS a JOIN quizzes AS q ON q.id = a.quiz_id WHERE a.student_id = ? ORDER BY a.id DESC", (student_id,)).fetchall()
     if student is None:
         session.clear()
         return redirect(url_for("student_login"))
@@ -316,9 +316,34 @@ def student_quiz(quiz_id):
             execute(connection, "INSERT INTO student_quiz_attempts (student_id, quiz_id, answers, score, total_score, submitted_at) VALUES (?, ?, ?, ?, ?, ?)", (
                 session["student_id"], quiz_id, json.dumps(answers, ensure_ascii=False), score, len(questions), datetime.now().isoformat(),
             ))
-        return render_template("student_quiz_result.html", quiz=quiz, score=score, total_score=len(questions), answers=answers)
+            attempt = execute(connection, "SELECT id FROM student_quiz_attempts WHERE student_id = ? AND quiz_id = ? ORDER BY id DESC LIMIT 1", (session["student_id"], quiz_id)).fetchone()
+        if attempt is None:
+            abort(500, "نتیجه آزمون ثبت شد اما امکان مشاهده آن وجود ندارد.")
+        return redirect(url_for("student_attempt", attempt_id=attempt["id"] if DATABASE_URL else attempt[0]))
     session["csrf_token"] = secrets.token_urlsafe(32)
     return render_template("student_quiz.html", quiz=quiz, questions=questions, csrf_token=session["csrf_token"])
+
+
+@app.route("/student/history")
+def student_history():
+    if not session.get("student_id"):
+        return redirect(url_for("student_login"))
+    with get_db() as connection:
+        attempts = execute(connection, "SELECT a.id AS attempt_id, q.title, q.course_name, a.score, a.total_score, a.submitted_at FROM student_quiz_attempts AS a JOIN quizzes AS q ON q.id = a.quiz_id WHERE a.student_id = ? ORDER BY a.id DESC", (session["student_id"],)).fetchall()
+    return render_template("student_history.html", attempts=attempts)
+
+
+@app.route("/student/attempts/<int:attempt_id>")
+def student_attempt(attempt_id):
+    if not session.get("student_id"):
+        return redirect(url_for("student_login"))
+    with get_db() as connection:
+        attempt = execute(connection, "SELECT a.id, q.id AS quiz_id, q.title, q.course_name, q.questions, a.answers, a.score, a.total_score, a.submitted_at FROM student_quiz_attempts AS a JOIN quizzes AS q ON q.id = a.quiz_id WHERE a.id = ? AND a.student_id = ?", (attempt_id, session["student_id"])).fetchone()
+    if attempt is None:
+        abort(404, "تلاش آزمون موردنظر یافت نشد.")
+    answers = json.loads(attempt["answers"] if DATABASE_URL else attempt["answers"])
+    questions = json.loads(attempt["questions"])
+    return render_template("student_attempt_detail.html", attempt=attempt, questions=questions, answers=answers)
 
 
 @app.route("/admin/login", methods=["GET", "POST"])
