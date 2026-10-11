@@ -14,6 +14,9 @@ class StudentAreaTests(unittest.TestCase):
         os.environ["SQLITE_PATH"] = str(self.temp_db)
         os.environ["CONTACTS_JSON_PATH"] = str(Path(self.temp_dir.name) / "contacts.json")
         os.environ["STUDENT_DEMO_PASSWORD"] = "student123"
+        os.environ["TEACHER_USERNAME"] = "teacher-test"
+        os.environ["TEACHER_PASSWORD"] = "teacher-pass-test"
+        os.environ["TEACHER_NAME"] = "دبیر آزمایشی"
         import app as app_module
 
         self.app_module = importlib.reload(app_module)
@@ -95,6 +98,86 @@ class StudentAreaTests(unittest.TestCase):
 
         quiz = self.client.get("/student/quiz/2")
         self.assertEqual(quiz.status_code, 403)
+
+    def test_teacher_can_grade_class_and_publish_quiz_for_students(self):
+        login_page = self.client.get("/teacher/login")
+        self.assertEqual(login_page.status_code, 200)
+        teacher_token = login_page.get_data(as_text=True).split('name="csrf_token" value="')[1].split('"')[0]
+        self.client.post("/teacher/login", data={
+            "username": "teacher-test",
+            "password": "teacher-pass-test",
+            "csrf_token": teacher_token,
+        }, follow_redirects=True)
+
+        teacher_page = self.client.get("/teacher")
+        self.assertEqual(teacher_page.status_code, 200)
+        self.assertIn("فاطمه رضایی", teacher_page.get_data(as_text=True))
+        teacher_token = teacher_page.get_data(as_text=True).split('name="csrf_token" value="')[1].split('"')[0]
+        grade_response = self.client.post("/teacher", data={
+            "csrf_token": teacher_token,
+            "action": "grade",
+            "class_name": "پایه دهم - علوم",
+            "student_id": "1",
+            "course_name": "ریاضی",
+            "score": "18",
+            "total_score": "20",
+            "activity": "تکلیف آزمایشی",
+        })
+        self.assertEqual(grade_response.status_code, 302)
+        invalid_grade = self.client.post("/teacher", data={
+            "csrf_token": teacher_token,
+            "action": "grade",
+            "class_name": "پایه دهم - علوم",
+            "student_id": "1",
+            "course_name": "ریاضی",
+            "score": "21",
+            "total_score": "20",
+            "activity": "نمره نامعتبر",
+        })
+        self.assertEqual(invalid_grade.status_code, 400)
+        wrong_class_grade = self.client.post("/teacher", data={
+            "csrf_token": teacher_token,
+            "action": "grade",
+            "class_name": "کلاس اشتباه",
+            "student_id": "1",
+            "course_name": "ریاضی",
+            "score": "18",
+            "total_score": "20",
+            "activity": "تلاش نامعتبر",
+        })
+        self.assertEqual(wrong_class_grade.status_code, 404)
+
+        quiz_response = self.client.post("/teacher", data={
+            "csrf_token": teacher_token,
+            "action": "quiz",
+            "class_name": "پایه دهم - علوم",
+            "title": "آزمون کلاسی آزمایشی",
+            "course_name": "علوم",
+            "description": "آزمون ساخته‌شده توسط دبیر",
+            "question_text": ["آب در چند درجه می‌جوشد؟", "زمین به دور چه می‌چرخد؟"],
+            "options_0": ["100", "50"],
+            "options_1": ["خورشید", "ماه"],
+            "correct_answer": ["100", "خورشید"],
+        })
+        self.assertEqual(quiz_response.status_code, 302)
+
+        self.client.post("/teacher/logout", data={"csrf_token": teacher_token})
+        student_login = self.client.get("/student/login")
+        student_token = student_login.get_data(as_text=True).split('name="csrf_token" value="')[1].split('"')[0]
+        dashboard = self.client.post("/student/login", data={
+            "student_number": "1001",
+            "password": "student123",
+            "csrf_token": student_token,
+        }, follow_redirects=True)
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertIn("آزمون کلاسی آزمایشی", dashboard.get_data(as_text=True))
+        self.assertIn("تکلیف آزمایشی", self.client.get("/student/grades").get_data(as_text=True))
+
+        with self.app_module.get_db() as connection:
+            quiz = self.app_module.execute(connection, "SELECT id FROM quizzes WHERE title = ?", ("آزمون کلاسی آزمایشی",)).fetchone()
+        quiz_page = self.client.get(f"/student/quiz/{quiz['id']}")
+        self.assertEqual(quiz_page.status_code, 200)
+        self.assertIn("آب در چند درجه می‌جوشد؟", quiz_page.get_data(as_text=True))
 
 
 if __name__ == "__main__":

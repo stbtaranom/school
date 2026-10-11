@@ -15,6 +15,9 @@ DB_PATH = Path(os.getenv("SQLITE_PATH", BASE_DIR / "school.db"))
 CONTACTS_JSON_PATH = Path(os.getenv("CONTACTS_JSON_PATH", BASE_DIR / "contacts.json"))
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+TEACHER_USERNAME = os.getenv("TEACHER_USERNAME", "")
+TEACHER_PASSWORD = os.getenv("TEACHER_PASSWORD", "")
+TEACHER_NAME = os.getenv("TEACHER_NAME", "معلم")
 app = Flask(__name__, static_folder=str(BASE_DIR), static_url_path="")
 app.secret_key = os.getenv("SECRET_KEY") or secrets.token_hex(32)
 app.config.update(
@@ -76,6 +79,13 @@ def init_db():
             )
             """)
         execute(connection, f"""
+            CREATE TABLE IF NOT EXISTS teachers (
+                id {identity_column}, username TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL, password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """)
+        execute(connection, f"""
             CREATE TABLE IF NOT EXISTS student_grades (
                 id {identity_column}, student_id INTEGER NOT NULL,
                 course_name TEXT NOT NULL, score INTEGER NOT NULL,
@@ -91,10 +101,18 @@ def init_db():
                 student_id INTEGER, created_at TEXT NOT NULL
             )
             """)
-        try:
-            execute(connection, "ALTER TABLE quizzes ADD COLUMN student_id INTEGER")
-        except sqlite3.OperationalError:
-            pass
+        if DATABASE_URL:
+            execute(connection, "ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS student_id INTEGER")
+            execute(connection, "ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS class_name TEXT")
+        else:
+            for statement in (
+                "ALTER TABLE quizzes ADD COLUMN student_id INTEGER",
+                "ALTER TABLE quizzes ADD COLUMN class_name TEXT",
+            ):
+                try:
+                    execute(connection, statement)
+                except sqlite3.OperationalError:
+                    pass
         execute(connection, f"""
             CREATE TABLE IF NOT EXISTS student_quiz_attempts (
                 id {identity_column}, student_id INTEGER NOT NULL, quiz_id INTEGER NOT NULL,
@@ -104,6 +122,12 @@ def init_db():
                 FOREIGN KEY (quiz_id) REFERENCES quizzes (id)
             )
             """)
+        if TEACHER_USERNAME and TEACHER_PASSWORD:
+            teacher = execute(connection, "SELECT id FROM teachers WHERE username = ?", (TEACHER_USERNAME,)).fetchone()
+            if teacher is None:
+                execute(connection, "INSERT INTO teachers (username, name, password_hash, created_at) VALUES (?, ?, ?, ?)", (
+                    TEACHER_USERNAME, TEACHER_NAME, generate_password_hash(TEACHER_PASSWORD), datetime.now().isoformat(),
+                ))
         count = execute(connection, "SELECT COUNT(*) AS count FROM notices").fetchone()["count"] if DATABASE_URL else execute(connection, "SELECT COUNT(*) FROM notices").fetchone()[0]
         if count == 0:
             initial_notices = [
@@ -218,6 +242,111 @@ def student_required():
     return None
 
 
+def teacher_required():
+    if not session.get("teacher_id"):
+        return redirect(url_for("teacher_login"))
+    return None
+
+
+@app.route("/teacher/login", methods=["GET", "POST"])
+def teacher_login():
+    if not TEACHER_USERNAME or not TEACHER_PASSWORD:
+        abort(503, "ورود معلم هنوز پیکربندی نشده است.")
+    session.setdefault("csrf_token", secrets.token_urlsafe(32))
+    error = None
+    if request.method == "POST":
+        if not valid_csrf_token():
+            abort(400, "درخواست نامعتبر است. صفحه را تازه کنید و دوباره تلاش کنید.")
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        with get_db() as connection:
+            teacher = execute(connection, "SELECT id, name, password_hash FROM teachers WHERE username = ?", (username,)).fetchone()
+        if teacher and check_password_hash(teacher["password_hash"], password):
+            session.clear()
+            session["teacher_id"] = teacher["id"]
+            session["teacher_name"] = teacher["name"]
+            session["csrf_token"] = secrets.token_urlsafe(32)
+            session.permanent = True
+            return redirect(url_for("teacher_dashboard"))
+        error = "نام کاربری یا رمز عبور درست نیست."
+    return render_template("teacher_login.html", csrf_token=session["csrf_token"], error=error)
+
+
+@app.route("/teacher/logout", methods=["POST"])
+def teacher_logout():
+    if not valid_csrf_token():
+        abort(400, "درخواست نامعتبر است. صفحه را تازه کنید.")
+    session.clear()
+    return redirect(url_for("teacher_login"))
+
+
+@app.route("/teacher", methods=["GET", "POST"])
+def teacher_dashboard():
+    required = teacher_required()
+    if required:
+        return required
+    if request.method == "POST":
+        if not valid_csrf_token():
+            abort(400, "درخواست نامعتبر است. صفحه را تازه کنید.")
+        action = request.form.get("action", "")
+        if action == "grade":
+            try:
+                student_id = int(request.form.get("student_id", ""))
+                score = int(request.form.get("score", ""))
+                total_score = int(request.form.get("total_score", ""))
+            except ValueError:
+                abort(400, "نمره واردشده معتبر نیست.")
+            course_name = request.form.get("course_name", "").strip()
+            activity = request.form.get("activity", "").strip()
+            class_name = request.form.get("class_name", "").strip()
+            if not course_name or not activity or not class_name or total_score <= 0 or score < 0 or score > total_score:
+                abort(400, "اطلاعات نمره کامل یا معتبر نیست.")
+            with get_db() as connection:
+                student = execute(connection, "SELECT id FROM students WHERE id = ? AND class_name = ?", (student_id, class_name)).fetchone()
+                if student is None:
+                    abort(404, "دانش‌آموز در کلاس انتخاب‌شده پیدا نشد.")
+                execute(connection, "INSERT INTO student_grades (student_id, course_name, score, total_score, term, created_at) VALUES (?, ?, ?, ?, ?, ?)", (
+                    student_id, course_name, score, total_score, f"فعالیت: {activity}", datetime.now().isoformat(),
+                ))
+            return redirect(url_for("teacher_dashboard", class_name=class_name, saved="grade"))
+        if action == "quiz":
+            title = request.form.get("title", "").strip()
+            course_name = request.form.get("course_name", "").strip()
+            description = request.form.get("description", "").strip()
+            class_name = request.form.get("class_name", "").strip()
+            question_texts = request.form.getlist("question_text")
+            option_groups = [request.form.getlist(f"options_{index}") for index in range(len(question_texts))]
+            correct_answers = request.form.getlist("correct_answer")
+            questions = []
+            for index, question_text in enumerate(question_texts):
+                options = [option.strip() for option in option_groups[index] if option.strip()]
+                if not question_text.strip():
+                    continue
+                if len(options) < 2 or index >= len(correct_answers) or correct_answers[index] not in options:
+                    abort(400, "برای هر سؤال دست‌کم دو گزینه و یک پاسخ درست تعیین کنید.")
+                questions.append({"id": len(questions) + 1, "question": question_text.strip(), "options": options, "answer": correct_answers[index]})
+            if not title or not course_name or not class_name or not questions:
+                abort(400, "عنوان، درس، کلاس و دست‌کم یک سؤال لازم است.")
+            with get_db() as connection:
+                execute(connection, "INSERT INTO quizzes (title, course_name, description, questions, student_id, class_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", (
+                    title, course_name, description, json.dumps(questions, ensure_ascii=False), None, class_name, datetime.now().isoformat(),
+                ))
+            return redirect(url_for("teacher_dashboard", class_name=class_name, saved="quiz"))
+        abort(400, "عملیات درخواست‌شده شناخته نشد.")
+
+    with get_db() as connection:
+        classes = [row["class_name"] for row in execute(connection, "SELECT DISTINCT class_name FROM students ORDER BY class_name").fetchall()]
+        class_name = request.args.get("class_name", classes[0] if classes else "")
+        if class_name not in classes:
+            class_name = classes[0] if classes else ""
+        students = execute(connection, "SELECT id, student_number, name, class_name FROM students WHERE class_name = ? ORDER BY name", (class_name,)).fetchall() if class_name else []
+        grades = execute(connection, "SELECT g.student_id, s.name AS student_name, g.course_name, g.score, g.total_score, g.term, g.created_at FROM student_grades AS g JOIN students AS s ON s.id = g.student_id WHERE s.class_name = ? ORDER BY g.id DESC", (class_name,)).fetchall() if class_name else []
+        attempts = execute(connection, "SELECT s.name AS student_name, q.title, q.course_name, a.score, a.total_score, a.submitted_at FROM student_quiz_attempts AS a JOIN students AS s ON s.id = a.student_id JOIN quizzes AS q ON q.id = a.quiz_id WHERE s.class_name = ? ORDER BY a.id DESC", (class_name,)).fetchall() if class_name else []
+        quizzes = execute(connection, "SELECT id, title, course_name, created_at FROM quizzes WHERE class_name = ? ORDER BY id DESC", (class_name,)).fetchall() if class_name else []
+    session.setdefault("csrf_token", secrets.token_urlsafe(32))
+    return render_template("teacher_dashboard.html", teacher_name=session.get("teacher_name", TEACHER_NAME), classes=classes, class_name=class_name, students=students, grades=grades, attempts=attempts, quizzes=quizzes, csrf_token=session["csrf_token"], saved=request.args.get("saved"))
+
+
 @app.route("/student/login", methods=["GET", "POST"])
 def student_login():
     session.setdefault("csrf_token", secrets.token_urlsafe(32))
@@ -259,11 +388,12 @@ def student_dashboard():
         student = execute(connection, "SELECT id, student_number, name, class_name FROM students WHERE id = ?", (student_id,)).fetchone()
         grades = execute(connection, "SELECT course_name, score, total_score, term FROM student_grades WHERE student_id = ? ORDER BY id DESC", (student_id,)).fetchall()
         attempts = execute(connection, "SELECT a.id AS attempt_id, q.title, q.course_name, a.score, a.total_score, a.submitted_at FROM student_quiz_attempts AS a JOIN quizzes AS q ON q.id = a.quiz_id WHERE a.student_id = ? ORDER BY a.id DESC", (student_id,)).fetchall()
+        available_quizzes = execute(connection, "SELECT id, title, course_name, description FROM quizzes WHERE (student_id IS NULL AND (class_name IS NULL OR class_name = ?)) OR student_id = ? ORDER BY id DESC", (session.get("student_class", ""), student_id)).fetchall()
     if student is None:
         session.clear()
         return redirect(url_for("student_login"))
     session.setdefault("csrf_token", secrets.token_urlsafe(32))
-    return render_template("student_dashboard.html", student=student, grades=grades, attempts=attempts, csrf_token=session["csrf_token"])
+    return render_template("student_dashboard.html", student=student, grades=grades, attempts=attempts, available_quizzes=available_quizzes, csrf_token=session["csrf_token"])
 
 
 @app.route("/student/grades")
@@ -293,11 +423,11 @@ def student_quiz(quiz_id):
     if not session.get("student_id"):
         return redirect(url_for("student_login"))
     with get_db() as connection:
-        quiz = execute(connection, "SELECT id, title, course_name, description, questions, student_id FROM quizzes WHERE id = ?", (quiz_id,)).fetchone()
+        quiz = execute(connection, "SELECT id, title, course_name, description, questions, student_id, class_name FROM quizzes WHERE id = ?", (quiz_id,)).fetchone()
         existing_attempt = execute(connection, "SELECT id FROM student_quiz_attempts WHERE student_id = ? AND quiz_id = ?", (session["student_id"], quiz_id)).fetchone()
     if quiz is None:
         abort(404, "آزمون موردنظر وجود ندارد.")
-    if quiz["student_id"] not in (None, session["student_id"]):
+    if quiz["student_id"] not in (None, session["student_id"]) or (quiz["class_name"] and quiz["class_name"] != session.get("student_class")):
         abort(403, "شما به این آزمون دسترسی ندارید.")
     if existing_attempt:
         return redirect(url_for("student_dashboard"))
