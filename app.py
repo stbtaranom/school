@@ -4,6 +4,7 @@ import hmac
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import sqlite3
 
@@ -18,6 +19,7 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 TEACHER_USERNAME = os.getenv("TEACHER_USERNAME", "")
 TEACHER_PASSWORD = os.getenv("TEACHER_PASSWORD", "")
 TEACHER_NAME = os.getenv("TEACHER_NAME", "معلم")
+TEACHER_INVITE_CODE = os.getenv("TEACHER_INVITE_CODE", "")
 app = Flask(__name__, static_folder=str(BASE_DIR), static_url_path="")
 app.secret_key = os.getenv("SECRET_KEY") or secrets.token_hex(32)
 app.config.update(
@@ -85,6 +87,15 @@ def init_db():
                 created_at TEXT NOT NULL
             )
             """)
+        if DATABASE_URL:
+            execute(connection, "ALTER TABLE students ADD COLUMN IF NOT EXISTS username TEXT")
+        else:
+            try:
+                execute(connection, "ALTER TABLE students ADD COLUMN username TEXT")
+            except sqlite3.OperationalError:
+                pass
+        execute(connection, "CREATE UNIQUE INDEX IF NOT EXISTS students_username_unique ON students (username)")
+        execute(connection, "CREATE UNIQUE INDEX IF NOT EXISTS teachers_username_lower_unique ON teachers (lower(username))")
         execute(connection, f"""
             CREATE TABLE IF NOT EXISTS student_grades (
                 id {identity_column}, student_id INTEGER NOT NULL,
@@ -250,8 +261,6 @@ def teacher_required():
 
 @app.route("/teacher/login", methods=["GET", "POST"])
 def teacher_login():
-    if not TEACHER_USERNAME or not TEACHER_PASSWORD:
-        abort(503, "ورود معلم هنوز پیکربندی نشده است.")
     session.setdefault("csrf_token", secrets.token_urlsafe(32))
     error = None
     if request.method == "POST":
@@ -270,6 +279,92 @@ def teacher_login():
             return redirect(url_for("teacher_dashboard"))
         error = "نام کاربری یا رمز عبور درست نیست."
     return render_template("teacher_login.html", csrf_token=session["csrf_token"], error=error)
+
+
+def valid_account_fields(username, password):
+    return bool(
+        re.fullmatch(r"[a-zA-Z][a-zA-Z0-9_.-]{2,39}", username)
+        and len(password) >= 8
+    )
+
+
+@app.route("/student/register", methods=["GET", "POST"])
+def student_register():
+    session.setdefault("csrf_token", secrets.token_urlsafe(32))
+    error = None
+    if request.method == "POST":
+        if not valid_csrf_token():
+            abort(400, "درخواست نامعتبر است. صفحه را تازه کنید و دوباره تلاش کنید.")
+        student_number = request.form.get("student_number", "").strip()
+        current_password = request.form.get("current_password", "")
+        username = request.form.get("username", "").strip().lower()
+        password = request.form.get("password", "")
+        password_confirmation = request.form.get("password_confirmation", "")
+        if not valid_account_fields(username, password):
+            error = "نام کاربری باید با حرف انگلیسی شروع شود و ۳ تا ۴۰ نویسه باشد؛ رمز باید دست‌کم ۸ نویسه داشته باشد."
+        elif password != password_confirmation:
+            error = "تکرار رمز عبور یکسان نیست."
+        else:
+            with get_db() as connection:
+                student = execute(connection, "SELECT id, password_hash, username FROM students WHERE student_number = ?", (student_number,)).fetchone()
+                username_exists = execute(connection, "SELECT id FROM students WHERE lower(username) = ? OR student_number = ?", (username, username)).fetchone()
+                if student is None or not check_password_hash(student["password_hash"], current_password):
+                    error = "شماره دانش‌آموزی یا رمز فعلی معتبر نیست."
+                elif student["username"]:
+                    error = "برای این دانش‌آموز قبلاً حساب کاربری ساخته شده است."
+                elif username_exists:
+                    error = "این نام کاربری قبلاً انتخاب شده است."
+                else:
+                    execute(connection, "UPDATE students SET username = ?, password_hash = ? WHERE id = ?", (
+                        username, generate_password_hash(password), student["id"],
+                    ))
+                    session.clear()
+                    session["student_id"] = student["id"]
+                    session["student_name"] = execute(connection, "SELECT name FROM students WHERE id = ?", (student["id"],)).fetchone()["name"]
+                    session["student_class"] = execute(connection, "SELECT class_name FROM students WHERE id = ?", (student["id"],)).fetchone()["class_name"]
+                    session["csrf_token"] = secrets.token_urlsafe(32)
+                    session.permanent = True
+                    return redirect(url_for("student_dashboard"))
+    return render_template("student_register.html", csrf_token=session["csrf_token"], error=error)
+
+
+@app.route("/teacher/register", methods=["GET", "POST"])
+def teacher_register():
+    if not TEACHER_INVITE_CODE:
+        abort(503, "ثبت‌نام معلم فعال نیست؛ مدیر سامانه باید کد دعوت را تنظیم کند.")
+    session.setdefault("csrf_token", secrets.token_urlsafe(32))
+    error = None
+    if request.method == "POST":
+        if not valid_csrf_token():
+            abort(400, "درخواست نامعتبر است. صفحه را تازه کنید و دوباره تلاش کنید.")
+        name = request.form.get("name", "").strip()
+        username = request.form.get("username", "").strip().lower()
+        password = request.form.get("password", "")
+        password_confirmation = request.form.get("password_confirmation", "")
+        invite_code = request.form.get("invite_code", "")
+        if not hmac.compare_digest(invite_code, TEACHER_INVITE_CODE):
+            error = "کد دعوت معتبر نیست."
+        elif not name or not valid_account_fields(username, password):
+            error = "نام لازم است؛ نام کاربری باید ۳ تا ۴۰ نویسه انگلیسی و رمز دست‌کم ۸ نویسه باشد."
+        elif password != password_confirmation:
+            error = "تکرار رمز عبور یکسان نیست."
+        else:
+            with get_db() as connection:
+                exists = execute(connection, "SELECT id FROM teachers WHERE lower(username) = ?", (username,)).fetchone()
+                if exists:
+                    error = "این نام کاربری قبلاً انتخاب شده است."
+                else:
+                    execute(connection, "INSERT INTO teachers (username, name, password_hash, created_at) VALUES (?, ?, ?, ?)", (
+                        username, name, generate_password_hash(password), datetime.now().isoformat(),
+                    ))
+                    teacher = execute(connection, "SELECT id FROM teachers WHERE username = ?", (username,)).fetchone()
+                    session.clear()
+                    session["teacher_id"] = teacher["id"]
+                    session["teacher_name"] = name
+                    session["csrf_token"] = secrets.token_urlsafe(32)
+                    session.permanent = True
+                    return redirect(url_for("teacher_dashboard"))
+    return render_template("teacher_register.html", csrf_token=session["csrf_token"], error=error)
 
 
 @app.route("/teacher/logout", methods=["POST"])
@@ -354,10 +449,12 @@ def student_login():
     if request.method == "POST":
         if not valid_csrf_token():
             abort(400, "درخواست نامعتبر است. صفحه را تازه کنید و دوباره تلاش کنید.")
-        student_number = request.form.get("student_number", "").strip()
+        username = request.form.get("username", request.form.get("student_number", "")).strip().lower()
         student_password = request.form.get("password", "")
         with get_db() as connection:
-            row = execute(connection, "SELECT id, name, password_hash, class_name FROM students WHERE student_number = ?", (student_number,)).fetchone()
+            row = execute(connection, "SELECT id, name, password_hash, class_name FROM students WHERE username = ?", (username,)).fetchone()
+            if row is None:
+                row = execute(connection, "SELECT id, name, password_hash, class_name FROM students WHERE username IS NULL AND student_number = ?", (username,)).fetchone()
         if row is not None:
             stored_hash = row["password_hash"] if DATABASE_URL else row[2]
             if check_password_hash(stored_hash, student_password):

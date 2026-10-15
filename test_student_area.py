@@ -17,6 +17,7 @@ class StudentAreaTests(unittest.TestCase):
         os.environ["TEACHER_USERNAME"] = "teacher-test"
         os.environ["TEACHER_PASSWORD"] = "teacher-pass-test"
         os.environ["TEACHER_NAME"] = "دبیر آزمایشی"
+        os.environ["TEACHER_INVITE_CODE"] = "school-invite-test"
         import app as app_module
 
         self.app_module = importlib.reload(app_module)
@@ -178,6 +179,67 @@ class StudentAreaTests(unittest.TestCase):
         quiz_page = self.client.get(f"/student/quiz/{quiz['id']}")
         self.assertEqual(quiz_page.status_code, 200)
         self.assertIn("آب در چند درجه می‌جوشد؟", quiz_page.get_data(as_text=True))
+
+    def test_student_can_create_account_and_login_with_chosen_username(self):
+        registration = self.client.get("/student/register")
+        self.assertEqual(registration.status_code, 200)
+        csrf_token = registration.get_data(as_text=True).split('name="csrf_token" value="')[1].split('"')[0]
+        created = self.client.post("/student/register", data={
+            "csrf_token": csrf_token,
+            "student_number": "1002",
+            "current_password": "student456",
+            "username": "zahra.student",
+            "password": "new-student-pass",
+            "password_confirmation": "new-student-pass",
+        }, follow_redirects=True)
+        self.assertEqual(created.status_code, 200)
+        self.assertIn("زهرا محمدی", created.get_data(as_text=True))
+
+        self.client.post("/student/logout", data={"csrf_token": self.client.get("/student").get_data(as_text=True).split('name="csrf_token" value="')[1].split('"')[0]})
+        login_page = self.client.get("/student/login")
+        login_token = login_page.get_data(as_text=True).split('name="csrf_token" value="')[1].split('"')[0]
+        logged_in = self.client.post("/student/login", data={
+            "csrf_token": login_token,
+            "username": "zahra.student",
+            "password": "new-student-pass",
+        }, follow_redirects=True)
+        self.assertEqual(logged_in.status_code, 200)
+        self.assertIn("داشبورد دانش‌آموز", logged_in.get_data(as_text=True))
+        with self.app_module.get_db() as connection:
+            student = self.app_module.execute(connection, "SELECT username, password_hash FROM students WHERE student_number = ?", ("1002",)).fetchone()
+        self.assertEqual(student["username"], "zahra.student")
+        self.assertTrue(check_password_hash(student["password_hash"], "new-student-pass"))
+
+    def test_teacher_can_register_with_invite_and_login_later(self):
+        registration = self.client.get("/teacher/register")
+        self.assertEqual(registration.status_code, 200)
+        csrf_token = registration.get_data(as_text=True).split('name="csrf_token" value="')[1].split('"')[0]
+        created = self.client.post("/teacher/register", data={
+            "csrf_token": csrf_token,
+            "name": "معلم جدید",
+            "username": "new.teacher",
+            "password": "new-teacher-pass",
+            "password_confirmation": "new-teacher-pass",
+            "invite_code": "school-invite-test",
+        }, follow_redirects=True)
+        self.assertEqual(created.status_code, 200)
+        self.assertIn("معلم جدید", created.get_data(as_text=True))
+        dashboard = created.get_data(as_text=True)
+        logout_token = dashboard.split('name="csrf_token" value="')[1].split('"')[0]
+        self.client.post("/teacher/logout", data={"csrf_token": logout_token})
+
+        login_page = self.client.get("/teacher/login")
+        login_token = login_page.get_data(as_text=True).split('name="csrf_token" value="')[1].split('"')[0]
+        logged_in = self.client.post("/teacher/login", data={
+            "csrf_token": login_token,
+            "username": "new.teacher",
+            "password": "new-teacher-pass",
+        }, follow_redirects=True)
+        self.assertEqual(logged_in.status_code, 200)
+        self.assertIn("سلام، معلم جدید", logged_in.get_data(as_text=True))
+        with self.app_module.get_db() as connection:
+            teacher = self.app_module.execute(connection, "SELECT password_hash FROM teachers WHERE username = ?", ("new.teacher",)).fetchone()
+        self.assertTrue(check_password_hash(teacher["password_hash"], "new-teacher-pass"))
 
 
 if __name__ == "__main__":

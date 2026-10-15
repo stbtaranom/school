@@ -19,3 +19,5 @@ services:
         sync: false
       - key: TEACHER_NAME
         sync: false
+      - key: TEACHER_INVITE_CODE
+        sync: false

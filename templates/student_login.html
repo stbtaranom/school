@@ -19,11 +19,11 @@
     {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <div class="field"><label for="student_number">شماره دانش‌آموزی</label><input id="student_number" name="student_number" type="text" autocomplete="username" required autofocus></div>
+      <div class="field"><label for="username">نام کاربری یا شماره دانش‌آموزی</label><input id="username" name="username" type="text" autocomplete="username" required autofocus></div>
       <div class="field"><label for="password">رمز عبور</label><input id="password" name="password" type="password" autocomplete="current-password" required></div>
       <button type="submit">ورود به حساب</button>
     </form>
-    <p class="note">برای ورود آزمایشی، شماره 1001 و رمز  student123 را وارد کنید.</p>
+    <p class="note"><a href="{{ url_for('student_register') }}">حساب دانش‌آموزی ندارید؟ ساخت حساب</a></p>
   </main>
 </body>
 </html>
