@@ -20,7 +20,7 @@
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="field"><label for="name">نام و نام خانوادگی</label><input id="name" name="name" autocomplete="name" required></div>
-      <div class="field"><label for="username">نام کاربری</label><input id="username" name="username" minlength="3" maxlength="40" pattern="[A-Za-z][A-Za-z0-9_.-]{2,39}" autocomplete="username" required><span class="hint">با حرف انگلیسی شروع شود؛ سپس حروف، عدد، نقطه، خط تیره یا زیرخط</span></div>
+      <div class="field"><label for="username">نام کاربری</label><input id="username" name="username" minlength="3" maxlength="40" pattern="[A-Za-z][A-Za-z0-9_.\x2d]{2,39}" autocomplete="username" required><span class="hint">با حرف انگلیسی شروع شود؛ سپس حروف، عدد، نقطه، خط تیره یا زیرخط</span></div>
       <div class="field"><label for="password">رمز عبور</label><input id="password" name="password" type="password" minlength="8" autocomplete="new-password" required></div>
       <div class="field"><label for="password_confirmation">تکرار رمز عبور</label><input id="password_confirmation" name="password_confirmation" type="password" minlength="8" autocomplete="new-password" required></div>
       <div class="field"><label for="invite_code">کد دعوت مدرسه</label><input id="invite_code" name="invite_code" type="password" autocomplete="off" required></div>

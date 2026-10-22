@@ -22,7 +22,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="field"><label for="student_number">شماره دانش‌آموزی</label><input id="student_number" name="student_number" autocomplete="username" required></div>
       <div class="field"><label for="current_password">رمز فعلی / رمز اولیه مدرسه</label><input id="current_password" name="current_password" type="password" autocomplete="current-password" required></div>
-      <div class="field"><label for="username">نام کاربری جدید</label><input id="username" name="username" minlength="3" maxlength="40" pattern="[A-Za-z][A-Za-z0-9_.-]{2,39}" autocomplete="username" required><span class="hint">با حرف انگلیسی شروع شود؛ سپس حروف، عدد، نقطه، خط تیره یا زیرخط</span></div>
+      <div class="field"><label for="username">نام کاربری جدید</label><input id="username" name="username" minlength="3" maxlength="40" pattern="[A-Za-z][A-Za-z0-9_.\x2d]{2,39}" autocomplete="username" required><span class="hint">با حرف انگلیسی شروع شود؛ سپس حروف، عدد، نقطه، خط تیره یا زیرخط</span></div>
       <div class="field"><label for="password">رمز جدید</label><input id="password" name="password" type="password" minlength="8" autocomplete="new-password" required></div>
       <div class="field"><label for="password_confirmation">تکرار رمز جدید</label><input id="password_confirmation" name="password_confirmation" type="password" minlength="8" autocomplete="new-password" required></div>
       <button class="submit" type="submit">ساخت حساب و ورود</button>
